@@ -1,0 +1,11 @@
+[package]
+name = "jwt-generator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jsonwebtoken.workspace = true
+serde.workspace = true
+clap = { version = "4.5.6", features = ["derive"] }
+ed25519-dalek = { version = "2.1.1", features = ["rand_core", "pem"] }
+rand = "0.8.5"

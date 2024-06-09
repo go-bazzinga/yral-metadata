@@ -1,9 +1,2 @@
-use once_cell::sync::Lazy;
-
-use crate::auth::Claims;
-
-pub static CLAIMS: Lazy<Claims> = Lazy::new(|| Claims {
-    sub: "off-chain-agent".to_string(),
-    company: "gobazzinga".to_string(),
-    exp: 317125598072, // TODO: To be changed later when expiring tokens periodically
-});
+pub const OFF_CHAIN_AGENT_SUBJECT: &str = "off-chain-agent";
+pub const YRAL_METADATA_COMPANY: &str = "gobazzinga";

@@ -1,16 +1,27 @@
+mod error;
+mod old_types;
+use std::net::SocketAddr;
+
+use crate::{auth::JwtInterceptor, RedisPool};
 use candid::Principal;
-use futures::{prelude::*, stream::FuturesUnordered};
+use error::{ApiError, Result};
+use futures::{stream::FuturesUnordered, StreamExt};
 use ntex::web::{
     self,
     types::{Json, Path, State},
 };
-use redis::{AsyncCommands, RedisError};
-use types::{
-    error::ApiError, ApiResult, BulkUsers, GetUserMetadataRes, SetUserMetadataReq,
+use ntex_cors::Cors;
+use old_types::{
+    ApiResult, BulkUsers, DeleteMetadataBulkRes, GetUserMetadataRes, SetUserMetadataReq,
     SetUserMetadataRes, UserMetadata,
 };
+use redis::{AsyncCommands, RedisError};
 
-use crate::{auth::verify_token, state::AppState, Error, Result};
+#[derive(Clone)]
+pub struct AppState {
+    pub redis: RedisPool,
+    pub jwt: JwtInterceptor,
+}
 
 const METADATA_FIELD: &str = "metadata";
 
@@ -44,7 +55,7 @@ async fn get_user_metadata(
     let Some(meta_raw) = meta_raw else {
         return Ok(Json(Ok(None)));
     };
-    let meta: UserMetadata = serde_json::from_slice(&meta_raw).map_err(Error::Deser)?;
+    let meta: UserMetadata = serde_json::from_slice(&meta_raw).map_err(crate::Error::Deser)?;
 
     Ok(Json(Ok(Some(meta))))
 }
@@ -54,16 +65,16 @@ async fn delete_metadata_bulk(
     state: State<AppState>,
     req: Json<BulkUsers>,
     http_req: web::HttpRequest,
-) -> Result<Json<ApiResult<()>>> {
+) -> Result<Json<ApiResult<DeleteMetadataBulkRes>>> {
     // verify token
     let token = http_req
         .headers()
         .get("Authorization")
-        .ok_or(Error::AuthTokenMissing)?
+        .ok_or(crate::Error::AuthTokenMissing)?
         .to_str()
-        .map_err(|_| Error::AuthTokenInvalid)?;
+        .map_err(|_| crate::Error::AuthTokenInvalid)?;
     let token = token.trim_start_matches("Bearer ");
-    verify_token(token, &state.jwt_details)?;
+    state.jwt.verify_token(token)?;
 
     let keys = &req.users;
 
@@ -95,4 +106,26 @@ async fn delete_metadata_bulk(
     }
 
     Ok(Json(Ok(())))
+}
+
+pub async fn start_legacy_server(
+    bind_address: SocketAddr,
+    redis: RedisPool,
+    jwt: JwtInterceptor,
+) -> Result<()> {
+    let state = AppState { redis, jwt };
+
+    web::HttpServer::new(move || {
+        web::App::new()
+            .wrap(Cors::default())
+            .state(state.clone())
+            .service(set_user_metadata)
+            .service(get_user_metadata)
+            .service(delete_metadata_bulk)
+    })
+    .bind(bind_address)?
+    .run()
+    .await?;
+
+    Ok(())
 }

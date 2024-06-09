@@ -1,0 +1,31 @@
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+package yral_metadata;
+
+service PublicYralMetadata {
+    rpc GetUserMetadata(GetUserMetadataReq) returns (UserMetadata);
+    rpc SetUserMetadata(SetUserMetadataReq) returns (google.protobuf.Empty);
+}
+
+service PrivateYralMetadata {
+    rpc BulkDelete(BulkDeleteReq) returns (google.protobuf.Empty);
+}
+
+message GetUserMetadataReq {
+    bytes user_principal_id = 1;
+}
+
+message UserMetadata {
+    bytes user_canister_id = 1;
+    string user_name = 2;
+}
+
+message SetUserMetadataReq {
+    UserMetadata user_metadata = 1;
+    string signature_json = 2;
+    bytes user_principal_id = 3;
+}
+
+message BulkDeleteReq {
+    repeated bytes users = 1;
+}

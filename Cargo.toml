@@ -1,10 +1,12 @@
 [workspace]
-members = [ "client","server", "types"]
+members = [ "jwt-generator","server", "types"]
 resolver = "2"
 
 [workspace.dependencies]
 serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.117"
 thiserror = "1.0.58"
 candid = "0.10.6"
 log = "0.4.21"
 yral-identity = { git = "https://github.com/go-bazzinga/yral-identity.git", default-features = false, rev = "346f61f5bf07b619be8dfc3d041dc665c4c66113" }
+jsonwebtoken = { version = "9.3.0", features = ["use_pem"] }

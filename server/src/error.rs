@@ -1,10 +1,7 @@
-use ntex::{
-    http::{header, StatusCode},
-    web,
-};
+use candid::types::principal::PrincipalError;
 use redis::RedisError;
 use thiserror::Error;
-use types::{error::ApiError, ApiResult};
+use tonic::Status;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -12,69 +9,56 @@ pub enum Error {
     IO(#[from] std::io::Error),
     #[error("failed to load config {0}")]
     Config(#[from] config::ConfigError),
-    #[error("{0}")]
+    #[error("invalid identity: {0}")]
     Identity(#[from] yral_identity::Error),
     #[error("{0}")]
     Redis(#[from] RedisError),
     #[error("{0}")]
     Bb8(#[from] bb8::RunError<RedisError>),
     #[error("failed to deserialize json {0}")]
-    Deser(serde_json::Error),
+    Deser(#[from] serde_json::Error),
     #[error("jwt {0}")]
     Jwt(#[from] jsonwebtoken::errors::Error),
     #[error("auth token missing")]
     AuthTokenMissing,
     #[error("auth token invalid")]
     AuthTokenInvalid,
+    #[error("metadata missing")]
+    MetadataMissing,
+    #[error("invalid principal {0}")]
+    Principal(#[from] PrincipalError),
+    #[error("internal error: redis")]
+    DeleteKeys,
 }
 
-impl From<&Error> for ApiResult<()> {
-    fn from(value: &Error) -> Self {
-        let err = match value {
-            Error::IO(_) | Error::Config(_) => {
-                log::warn!("internal error {value}");
-                ApiError::Unknown("internal error, reported".into())
+impl From<Error> for Status {
+    fn from(value: Error) -> Self {
+        use Error::*;
+        match &value {
+            IO(e) => {
+                log::warn!("io error: {e}");
+                Status::internal("internal error: IO")
             }
-            Error::Identity(_) => ApiError::InvalidSignature,
-            Error::Redis(e) => {
-                log::warn!("redis error {e}");
-                ApiError::Redis
+            Config(e) => {
+                log::warn!("config error: {e}");
+                Status::internal("internal error")
             }
-            Error::Bb8(e) => {
-                log::warn!("bb8 error {e}");
-                ApiError::Redis
+            Identity(_) => Status::invalid_argument(value.to_string()),
+            Redis(e) => {
+                log::warn!("redis error: {e}");
+                Status::internal("internal error: redis")
             }
-            Error::Deser(e) => {
-                log::warn!("deserialization error {e}");
-                ApiError::Deser
+            Bb8(e) => {
+                log::warn!("redis pool error: {e}");
+                Status::internal("internal error: redis")
             }
-            Error::Jwt(_) => ApiError::Jwt,
-            Error::AuthTokenMissing => ApiError::AuthTokenMissing,
-            Error::AuthTokenInvalid => ApiError::AuthToken,
-        };
-        ApiResult::Err(err)
-    }
-}
-
-impl web::error::WebResponseError for Error {
-    fn error_response(&self, _: &web::HttpRequest) -> web::HttpResponse {
-        let api_error = ApiResult::from(self);
-        web::HttpResponse::build(self.status_code())
-            .set_header(header::CONTENT_TYPE, "application/json")
-            .json(&api_error)
-    }
-
-    fn status_code(&self) -> StatusCode {
-        match self {
-            Error::IO(_) | Error::Config(_) | Error::Redis(_) | Error::Deser(_) | Error::Bb8(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
-            Error::Identity(_)
-            | Error::Jwt(_)
-            | Error::AuthTokenInvalid
-            | Error::AuthTokenMissing => StatusCode::UNAUTHORIZED,
+            Deser(_) => Status::invalid_argument(value.to_string()),
+            Jwt(_) => Status::invalid_argument(value.to_string()),
+            AuthTokenMissing => Status::unauthenticated(value.to_string()),
+            AuthTokenInvalid => Status::unauthenticated(value.to_string()),
+            MetadataMissing => Status::invalid_argument(value.to_string()),
+            Principal(_) => Status::invalid_argument(value.to_string()),
+            DeleteKeys => Status::internal(value.to_string()),
         }
     }
 }
-
-pub type Result<T, E = Error> = std::result::Result<T, E>;

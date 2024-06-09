@@ -16,6 +16,14 @@ primary_region = 'sin'
   min_machines_running = 0
   processes = ['app']
 
+[[services]]
+  internal_port = 3001
+  protocol = "tcp"
+
+  [[services.ports]]
+    handlers = ["http", "tls"]
+    port = 8443
+
 [[vm]]
   memory = '256mb'
   cpu_kind = 'shared'
